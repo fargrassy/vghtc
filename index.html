@@ -1,4 +1,90 @@
-// 向 GAS 抓取資料並繪製表格
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>雲端班表檢視與修改</title>
+  <!-- 載入 LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background-color: #f8f9fa; }
+    h2 { text-align: center; color: #333; margin-bottom: 5px; }
+    #user-info { text-align: center; color: #666; font-size: 14px; margin-bottom: 15px; }
+    
+    .table-container { overflow-x: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; text-align: center; }
+    th, td { border: 1px solid #dee2e6; padding: 8px; font-size: 14px; }
+    th { background-color: #e9ecef; font-weight: bold; }
+    
+    /* 儲存格狀態樣式 */
+    input.cell-input { width: 90%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px; text-align: center; }
+    input.editable { background-color: #e8f0fe; border-color: #4285f4; font-weight: bold; }
+    input:disabled { background-color: transparent; border: none; color: #333; }
+    
+    .btn-container { text-align: center; margin-top: 15px; }
+    .save-btn { background-color: #06C755; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; }
+    .save-btn:disabled { background-color: #ccc; }
+  </style>
+</head>
+<body>
+
+  <h2>📅 雲端班表 (H2:I62)</h2>
+  <div id="user-info">載入中...</div>
+
+  <div class="table-container">
+    <table id="sheet-table">
+      <thead>
+        <tr>
+          <th>行號</th>
+          <th>H 欄</th>
+          <th>I 欄</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <!-- 資料將由 JS 自動動態渲染 -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-container">
+    <button class="save-btn" id="save-btn" onclick="saveChanges()" disabled>儲存修改</button>
+  </div>
+
+  <script>
+    // ⚠️ 請替換為您的 LIFF ID 與 GAS API 正式網址
+    const LIFF_ID = "2011614071-PBhIKLoa";
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxyPSZhz89hXDD-dZJxl-iFl9DjoxvThHoh7nmhJvZGKnR_E7-M_Dq_xS75tpAUDDRg6w/exec";
+
+    let currentUser = { userId: "", userName: "" };
+    let originalData = [];
+
+    // 初始化 LIFF
+    async function initLiff() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login();
+        } else {
+          const profile = await liff.getProfile();
+          currentUser.userId = profile.userId;
+          currentUser.userName = profile.displayName;
+          document.getElementById("user-info").innerText = `操作者：${profile.displayName}`;
+          loadSheetData();
+        }
+      } catch (err) {
+        document.getElementById("user-info").innerText = "LIFF 初始化失敗：" + err.message;
+      }
+    }
+
+    // 檢查某一列是否可編輯 (對應 4~14, 16~26, 28~38, 52~62)
+    function isRowEditable(rowNum) {
+      return (rowNum >= 4 && rowNum <= 14) ||
+             (rowNum >= 16 && rowNum <= 26) ||
+             (rowNum >= 28 && rowNum <= 38) ||
+             (rowNum >= 52 && rowNum <= 62);
+    }
+
+    // 向 GAS 抓取資料並繪製表格
 async function loadSheetData() {
   try {
     const response = await fetch(GAS_API_URL);
@@ -48,3 +134,63 @@ async function loadSheetData() {
     alert("載入班表失敗：" + err.message);
   }
 }
+
+    // 比對並送出修改內容
+    async function saveChanges() {
+      const saveBtn = document.getElementById("save-btn");
+      saveBtn.disabled = true;
+      saveBtn.innerText = "儲存中...";
+
+      let updatePromises = [];
+
+      // 檢查所有允許修改的儲存格是否有變動
+      originalData.forEach((row, index) => {
+        const actualRowIndex = index + 2;
+        if (isRowEditable(actualRowIndex)) {
+          ['H', 'I'].forEach((col, colIndex) => {
+            const cellId = `${col}${actualRowIndex}`;
+            const inputVal = document.getElementById(cellId).value;
+            const oldVal = row[colIndex] || "";
+
+            // 若數值有更動，傳送 API 更新
+            if (inputVal !== String(oldVal)) {
+              const payload = {
+                cell: cellId,
+                value: inputVal,
+                userId: currentUser.userId,
+                userName: currentUser.userName
+              };
+
+              const promise = fetch(GAS_API_URL, {
+                method: "POST",
+                body: JSON.stringify(payload)
+              });
+
+              updatePromises.push(promise);
+            }
+          });
+        }
+      });
+
+      if (updatePromises.length === 0) {
+        alert("資料未有任何變更。");
+        saveBtn.disabled = false;
+        saveBtn.innerText = "儲存修改";
+        return;
+      }
+
+      try {
+        await Promise.all(updatePromises);
+        alert("班表修改成功！");
+        liff.closeWindow(); // 完成後自動關閉 LIFF 頁面
+      } catch (err) {
+        alert("部分資料儲存失敗，請重試。");
+        saveBtn.disabled = false;
+        saveBtn.innerText = "儲存修改";
+      }
+    }
+
+    initLiff();
+  </script>
+</body>
+</html>
