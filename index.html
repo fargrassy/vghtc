@@ -16,14 +16,14 @@
     th, td { border: 1px solid #dee2e6; padding: 6px 4px; font-size: 13px; word-wrap: break-word; }
     th { background-color: #e9ecef; font-weight: bold; }
     
-    th.col-row { width: 12%; }
-    th.col-g { width: 32%; background-color: #f1f3f5; }
-    th.col-h, th.col-i { width: 28%; }
+    th.col-item { width: 34%; background-color: #f1f3f5; }
+    th.col-h, th.col-i { width: 33%; }
 
     /* 儲存格狀態樣式 */
-    input.cell-input { width: 95%; padding: 4px 2px; border: 1px solid #ced4da; border-radius: 4px; text-align: center; font-size: 13px; box-sizing: border-box; }
-    input.editable { background-color: #e8f0fe; border-color: #4285f4; font-weight: bold; }
-    input:disabled { background-color: transparent; border: none; color: #333; }
+    td.item-name { background-color: #f8f9fa; font-weight: bold; color: #495057; text-align: center; }
+    input.cell-input { width: 95%; padding: 5px 2px; border: 1px solid #ced4da; border-radius: 4px; text-align: center; font-size: 13px; box-sizing: border-box; }
+    input.editable { background-color: #e8f0fe; border-color: #4285f4; font-weight: bold; color: #1a73e8; }
+    input:disabled { background-color: transparent; border: none; color: #212529; }
     
     .btn-container { text-align: center; margin-top: 15px; margin-bottom: 20px; }
     .save-btn { background-color: #06C755; color: white; border: none; padding: 12px 28px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 80%; max-width: 300px; }
@@ -39,14 +39,13 @@
     <table id="sheet-table">
       <thead>
         <tr>
-          <th class="col-row">行</th>
-          <th class="col-g">G 欄</th>
+          <th class="col-item">項目 (G)</th>
           <th class="col-h">H 欄</th>
           <th class="col-i">I 欄</th>
         </tr>
       </thead>
       <tbody id="table-body">
-        <!-- 資料將由 JS 自動繪製 -->
+        <!-- 資料由 JS 動態生成 -->
       </tbody>
     </table>
   </div>
@@ -57,8 +56,8 @@
 
   <script>
     // ⚠️ 請替換為您的 LIFF ID 與 GAS API 正式網址
-    const LIFF_ID = "2011614071-PBhIKLoa";
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxyPSZhz89hXDD-dZJxl-iFl9DjoxvThHoh7nmhJvZGKnR_E7-M_Dq_xS75tpAUDDRg6w/exec";
+    const LIFF_ID = "YOUR_LIFF_ID";
+    const GAS_API_URL = "YOUR_GAS_WEB_APP_URL";
 
     let currentUser = { userId: "", userName: "" };
     let originalData = [];
@@ -81,7 +80,7 @@
       }
     }
 
-    // 判斷列號是否落在授權修改區間 (4~14, 16~26, 28~38, 52~62)
+    // 判斷列號是否落在授權修改區間 (H4~I14, H16~I26, H28~I38, H52~I62)
     function isRowEditable(rowNum) {
       return (rowNum >= 4 && rowNum <= 14) ||
              (rowNum >= 16 && rowNum <= 26) ||
@@ -103,27 +102,27 @@
         const sheetName = result.sheetName || "班表";
         originalData = result.data || [];
 
-        // 更新網頁標題
+        // 更新頁面標題
         document.querySelector("h2").innerText = `📅 雲端班表 (${sheetName})`;
 
         const tbody = document.getElementById("table-body");
         tbody.innerHTML = "";
 
-        // G2:I62 資料比對 (Index 0 對應第 2 行)
+        // originalData[0] 對應第 2 列 (G2:I2)，originalData[60] 對應第 62 列 (G62:I62)
         originalData.forEach((row, index) => {
-          const actualRowIndex = index + 2; // 對應 Google Sheets 的真實行號 (2 ~ 62)
+          const actualRowIndex = index + 2; // 對應 Google Sheets 真實行號 (2 ~ 62)
           const isEditableRow = isRowEditable(actualRowIndex);
 
           const tr = document.createElement("tr");
 
-          // 行號欄
-          const tdRow = document.createElement("td");
-          tdRow.innerText = actualRowIndex;
-          tr.appendChild(tdRow);
+          // 1. 第一欄：G 欄項目名稱 (例如：星期, 日期, 大夜班, 小夜班...)
+          const tdG = document.createElement("td");
+          tdG.className = "item-name";
+          tdG.innerText = row[0] !== undefined ? row[0] : "";
+          tr.appendChild(tdG);
 
-          // 繪製 G, H, I 欄 (對應 row[0], row[1], row[2])
+          // 2. 第二與第三欄：H 欄與 I 欄班表資料
           const cols = [
-            { name: 'G', index: 0, editable: false }, // G 欄一律不可編輯
             { name: 'H', index: 1, editable: isEditableRow },
             { name: 'I', index: 2, editable: isEditableRow }
           ];
@@ -133,11 +132,11 @@
             const input = document.createElement("input");
             input.type = "text";
             input.value = row[col.index] !== undefined ? row[col.index] : "";
-            input.id = `${col.name}${actualRowIndex}`; // 例如 G2, H4, I10
+            input.id = `${col.name}${actualRowIndex}`; // 例如 H4, I4, H10...
             input.className = "cell-input" + (col.editable ? " editable" : "");
             
             if (!col.editable) {
-              input.disabled = true; // 不可編輯的儲存格設為唯讀
+              input.disabled = true; // 不可編輯區域設定唯讀
             }
 
             td.appendChild(input);
@@ -161,7 +160,7 @@
 
       let updatePromises = [];
 
-      // 檢查 H 欄與 I 欄在許可區間內是否有資料變更
+      // 檢查許可區間內 H 欄與 I 欄是否有異動
       originalData.forEach((row, index) => {
         const actualRowIndex = index + 2;
         if (isRowEditable(actualRowIndex)) {
