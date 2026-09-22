@@ -55,12 +55,13 @@
   </div>
 
   <script>
-    // ⚠️ 請替換為您的 LIFF ID 與 GAS API 正式網址
-    const LIFF_ID = "2011614071-PBhIKLoa";
+    // 自動填入專屬 LIFF ID 與 GAS API 正式網址
+    const LIFF_ID = "2011614071";
     const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxyPSZhz89hXDD-dZJxl-iFl9DjoxvThHoh7nmhJvZGKnR_E7-M_Dq_xS75tpAUDDRg6w/exec";
 
     let currentUser = { userId: "", userName: "" };
     let originalData = [];
+    let hasExtraSection = false;
 
     // 初始化 LIFF
     async function initLiff() {
@@ -80,15 +81,23 @@
       }
     }
 
-    // 判斷列號是否落在授權修改區間 (H4~I14, H16~I26, H28~I38, H52~I62)
-    function isRowEditable(rowNum) {
-      return (rowNum >= 4 && rowNum <= 14) ||
-             (rowNum >= 16 && rowNum <= 26) ||
-             (rowNum >= 28 && rowNum <= 38) ||
-             (rowNum >= 52 && rowNum <= 62);
+    // 判斷列號是否落在授權修改區間 (H4~I14, H16~I26, H28~I38, H52~I62；若 H63 有資料則包含 H64~I74)
+    function isRowEditable(rowNum, extraAvailable) {
+      const baseEditable = (rowNum >= 4 && rowNum <= 14) ||
+                           (rowNum >= 16 && rowNum <= 26) ||
+                           (rowNum >= 28 && rowNum <= 38) ||
+                           (rowNum >= 52 && rowNum <= 62);
+
+      if (baseEditable) return true;
+
+      if (extraAvailable && rowNum >= 64 && rowNum <= 74) {
+        return true;
+      }
+
+      return false;
     }
 
-    // 向 GAS 抓取 G2:I62 數據並繪製表格
+    // 向 GAS 抓取班表數據並繪製表格
     async function loadSheetData() {
       try {
         const response = await fetch(GAS_API_URL);
@@ -101,6 +110,7 @@
 
         const sheetName = result.sheetName || "班表";
         originalData = result.data || [];
+        hasExtraSection = result.hasExtraSection || false;
 
         // 更新頁面標題
         document.querySelector("h2").innerText = `📅 雲端班表 (${sheetName})`;
@@ -108,20 +118,20 @@
         const tbody = document.getElementById("table-body");
         tbody.innerHTML = "";
 
-        // originalData[0] 對應第 2 列 (G2:I2)，originalData[60] 對應第 62 列 (G62:I62)
+        // originalData[0] 對應第 2 列 (G2:I2)
         originalData.forEach((row, index) => {
-          const actualRowIndex = index + 2; // 對應 Google Sheets 真實行號 (2 ~ 62)
-          const isEditableRow = isRowEditable(actualRowIndex);
+          const actualRowIndex = index + 2; // 對應 Google Sheets 真實行號
+          const isEditableRow = isRowEditable(actualRowIndex, hasExtraSection);
 
           const tr = document.createElement("tr");
 
-          // 1. 第一欄：G 欄項目名稱 (例如：星期, 日期, 大夜班, 小夜班...)
+          // 1. G 欄項目名稱
           const tdG = document.createElement("td");
           tdG.className = "item-name";
           tdG.innerText = row[0] !== undefined ? row[0] : "";
           tr.appendChild(tdG);
 
-          // 2. 第二與第三欄：H 欄與 I 欄班表資料
+          // 2. H 欄與 I 欄班表資料
           const cols = [
             { name: 'H', index: 1, editable: isEditableRow },
             { name: 'I', index: 2, editable: isEditableRow }
@@ -132,7 +142,7 @@
             const input = document.createElement("input");
             input.type = "text";
             input.value = row[col.index] !== undefined ? row[col.index] : "";
-            input.id = `${col.name}${actualRowIndex}`; // 例如 H4, I4, H10...
+            input.id = `${col.name}${actualRowIndex}`; // 例如 H4, I4, H64...
             input.className = "cell-input" + (col.editable ? " editable" : "");
             
             if (!col.editable) {
@@ -163,7 +173,7 @@
       // 檢查許可區間內 H 欄與 I 欄是否有異動
       originalData.forEach((row, index) => {
         const actualRowIndex = index + 2;
-        if (isRowEditable(actualRowIndex)) {
+        if (isRowEditable(actualRowIndex, hasExtraSection)) {
           const cols = [
             { name: 'H', index: 1 },
             { name: 'I', index: 2 }
@@ -205,7 +215,7 @@
 
       try {
         await Promise.all(updatePromises);
-        alert("班表修改成功！");
+        alert("班表修改成功！異動紀錄已寫入「修改歷程」頁籤。");
         liff.closeWindow();
       } catch (err) {
         alert("部分資料儲存失敗，請重試。");
